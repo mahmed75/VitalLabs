@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sleep Sensor Visualizer</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    h1, h2 { margin: 0 0 12px; }
+    p { color: #94a3b8; }
+    .card {
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .row {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .metric {
+      background: #1f2937;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .label { color: #94a3b8; font-size: 0.9rem; }
+    .value { font-size: 1.5rem; font-weight: bold; margin-top: 6px; }
+    .upload {
+      border: 2px dashed #475569;
+      border-radius: 16px;
+      padding: 18px;
+      text-align: center;
+      background: #1f2937;
+    }
+    input[type="file"] { color: #94a3b8; }
+    button {
+      background: #38bdf8;
+      color: #00111a;
+      border: 0;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .secondary {
+      background: #334155;
+      color: #e5e7eb;
+      margin-left: 8px;
+    }
+    canvas {
+      width: 100% !important;
+      height: 320px !important;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 0.95rem;
+    }
+    th, td {
+      border-bottom: 1px solid #334155;
+      padding: 8px;
+      text-align: left;
+    }
+    th { color: #94a3b8; }
+    @media (max-width: 800px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Sleep Sensor Visualizer</h1>
+    <p>Upload a CSV file from your sleep sensor and view the data in your browser.</p>
+
+    <div class="card upload">
+      <div><strong>Choose a CSV file</strong></div>
+      <p>Expected columns: <code>timestamp</code>, <code>spo2</code>, <code>heart_rate</code>, <code>mic_level</code>, <code>event</code></p>
+      <input id="fileInput" type="file" accept=".csv" />
+      <div>
+        <button id="demoBtn">Load demo data</button>
+        <button id="clearBtn" class="secondary">Clear</button>
+      </div>
+    </div>
+
+    <div class="card row">
+      <div class="metric">
+        <div class="label">Average SpO2</div>
+        <div class="value" id="avgSpo2">—</div>
+      </div>
+      <div class="metric">
+        <div class="label">Average heart rate</div>
+        <div class="value" id="avgHr">—</div>
+      </div>
+      <div class="metric">
+        <div class="label">Detected events</div>
+        <div class="value" id="eventCount">—</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>SpO2 and Heart Rate</h2>
+      <canvas id="mainChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Microphone level</h2>
+      <canvas id="micChart"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Raw Data Preview</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>timestamp</th>
+            <th>spo2</th>
+            <th>heart_rate</th>
+            <th>mic_level</th>
+            <th>event</th>
+          </tr>
+        </thead>
+        <tbody id="dataBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const demoBtn = document.getElementById("demoBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const dataBody = document.getElementById("dataBody");
+
+    const avgSpo2 = document.getElementById("avgSpo2");
+    const avgHr = document.getElementById("avgHr");
+    const eventCount = document.getElementById("eventCount");
+
+    let mainChart = null;
+    let micChart = null;
+
+    function mean(values) {
+      const nums = values.filter(v => Number.isFinite(v));
+      if (!nums.length) return null;
+      return nums.reduce((a, b) => a + b, 0) / nums.length;
+    }
+
+    function normalizeRows(rows) {
+      return rows
+        .map(r => ({
+          timestamp: r.timestamp || r.time || "",
+          spo2: Number(r.spo2),
+          heart_rate: Number(r.heart_rate),
+          mic_level: Number(r.mic_level),
+          event: (r.event || "").toString().trim()
+        }))
+        .filter(r => r.timestamp);
+    }
+
+    function renderTable(rows) {
+      dataBody.innerHTML = "";
+      rows.slice(0, 25).forEach(r => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${r.timestamp}</td>
+          <td>${Number.isFinite(r.spo2) ? r.spo2 : ""}</td>
+          <td>${Number.isFinite(r.heart_rate) ? r.heart_rate : ""}</td>
+          <td>${Number.isFinite(r.mic_level) ? r.mic_level : ""}</td>
+          <td>${r.event}</td>
+        `;
+        dataBody.appendChild(tr);
+      });
+    }
+
+    function updateSummary(rows) {
+      avgSpo2.textContent = mean(rows.map(r => r.spo2))?.toFixed(1) + "%" || "—";
+      avgHr.textContent = mean(rows.map(r => r.heart_rate))?.toFixed(1) + " bpm" || "—";
+      eventCount.textContent = rows.filter(r => r.event).length;
+    }
+
+    function destroyCharts() {
+      if (mainChart) mainChart.destroy();
+      if (micChart) micChart.destroy();
+    }
+
+    function renderCharts(rows) {
+      destroyCharts();
+
+      const labels = rows.map(r => r.timestamp);
+      const spo2Data = rows.map(r => Number.isFinite(r.spo2) ? r.spo2 : null);
+      const hrData = rows.map(r => Number.isFinite(r.heart_rate) ? r.heart_rate : null);
+      const micData = rows.map(r => Number.isFinite(r.mic_level) ? r.mic_level : null);
+
+      mainChart = new Chart(document.getElementById("mainChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "SpO2 (%)",
+              data: spo2Data,
+              borderWidth: 2,
+              tension: 0.3
+            },
+            {
+              label: "Heart Rate (bpm)",
+              data: hrData,
+              borderWidth: 2,
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "#e5e7eb" } }
+          },
+          scales: {
+            x: { ticks: { color: "#94a3b8", maxTicksLimit: 8 } },
+            y: { ticks: { color: "#94a3b8" } }
+          }
+        }
+      });
+
+      micChart = new Chart(document.getElementById("micChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Mic level",
+              data: micData,
+              borderWidth: 2,
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "#e5e7eb" } }
+          },
+          scales: {
+            x: { ticks: { color: "#94a3b8", maxTicksLimit: 8 } },
+            y: { ticks: { color: "#94a3b8" } }
+          }
+        }
+      });
+    }
+
+    function loadData(rows) {
+      const clean = normalizeRows(rows);
+      if (!clean.length) {
+        alert("No usable rows found. Check your CSV columns.");
+        return;
+      }
+      updateSummary(clean);
+      renderTable(clean);
+      renderCharts(clean);
+    }
+
+    function demoRows() {
+      const rows = [];
+      const start = new Date("2026-07-22T23:00:00");
+      for (let i = 0; i < 120; i++) {
+        const t = new Date(start.getTime() + i * 30000);
+        const spo2 = 98 - (i > 60 && i < 75 ? 3 : 0) - Math.abs(Math.sin(i / 15)) * 1.5;
+        const hr = 62 + Math.sin(i / 10) * 4 + (i > 60 && i < 75 ? 5 : 0);
+        const mic = Math.abs(Math.sin(i / 5)) * 0.4 + (i > 30 && i < 35 ? 0.9 : 0.1);
+        let event = "";
+        if (i === 32) event = "snore";
+        if (i === 66) event = "possible_apnea";
+        rows.push({
+          timestamp: t.toISOString(),
+          spo2: Number(spo2.toFixed(1)),
+          heart_rate: Number(hr.toFixed(1)),
+          mic_level: Number(mic.toFixed(2)),
+          event
+        });
+      }
+      return rows;
+    }
+
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: true,
+        complete: (results) => loadData(results.data),
+        error: () => alert("Could not read the CSV file.")
+      });
+    });
+
+    demoBtn.addEventListener("click", () => loadData(demoRows()));
+
+    clearBtn.addEventListener("click", () => {
+      fileInput.value = "";
+      dataBody.innerHTML = "";
+      avgSpo2.textContent = "—";
+      avgHr.textContent = "—";
+      eventCount.textContent = "—";
+      destroyCharts();
+    });
+
+    // show demo data when the page opens
+    loadData(demoRows());
+  </script>
+</body>
+</html>
