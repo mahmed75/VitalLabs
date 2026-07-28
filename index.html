@@ -1,331 +1,1467 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sleep Sensor Visualizer</title>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f2f2ef">
+  <meta name="description" content="A local browser viewer for VitalLabs sleep sensor CSV files.">
+  <title>VitalLabs ? Sleep Signal Viewer (NO ALGORITHM)</title>
   <style>
+    :root {
+      --page: #f2f2ef;
+      --panel: #ffffff;
+      --ink: #151515;
+      --muted: #686864;
+      --line: #b9b9b3;
+      --soft-line: #deded9;
+      --accent: #315fcb;
+      --accent-soft: #edf2ff;
+      --success: #247652;
+      --warning: #b75b21;
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
     body {
       margin: 0;
+      min-width: 320px;
+      background: var(--page);
+      color: var(--ink);
       font-family: Arial, Helvetica, sans-serif;
-      background: #0f172a;
-      color: #e5e7eb;
+      -webkit-font-smoothing: antialiased;
     }
-    .wrap {
-      max-width: 1100px;
+
+    button, input { font: inherit; }
+    button { color: inherit; }
+
+    .app {
+      width: min(1500px, 100%);
+      min-height: 100vh;
       margin: 0 auto;
-      padding: 24px;
+      background: var(--page);
     }
-    h1, h2 { margin: 0 0 12px; }
-    p { color: #94a3b8; }
-    .card {
-      background: #111827;
-      border: 1px solid #334155;
-      border-radius: 16px;
-      padding: 16px;
-      margin-top: 16px;
+
+    .site-header {
+      min-height: 68px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--ink);
+      background: var(--panel);
     }
-    .row {
+
+    .brand {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand strong {
+      font-size: 1.15rem;
+      letter-spacing: -.04em;
+    }
+
+    .brand span,
+    .header-dataset {
+      color: var(--muted);
+      font-size: .72rem;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    .header-dataset {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    #headerFileName {
+      max-width: 260px;
+      overflow: hidden;
+      color: var(--ink);
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .dashboard {
       display: grid;
-      gap: 16px;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: 360px minmax(0, 1fr);
+      grid-template-rows: auto minmax(590px, auto);
+      gap: 10px;
+      padding: 10px;
+      align-items: stretch;
     }
-    .metric {
-      background: #1f2937;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 14px;
+
+    .panel {
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--ink);
     }
-    .label { color: #94a3b8; font-size: 0.9rem; }
-    .value { font-size: 1.5rem; font-weight: bold; margin-top: 6px; }
-    .upload {
-      border: 2px dashed #475569;
-      border-radius: 16px;
-      padding: 18px;
+
+    .panel-header {
+      min-height: 53px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--ink);
+    }
+
+    .panel-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .panel-number {
+      color: var(--muted);
+      font-family: "Courier New", monospace;
+      font-size: .68rem;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 1rem;
+      line-height: 1;
+      letter-spacing: -.02em;
+    }
+
+    .panel-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: .67rem;
+      line-height: 1.25;
+      text-align: right;
+    }
+
+    .load-panel {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .load-content { padding: 12px; }
+
+    .drop-zone {
+      min-height: 118px;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      border: 1px dashed var(--ink);
+      background: #fafafa;
       text-align: center;
-      background: #1f2937;
-    }
-    input[type="file"] { color: #94a3b8; }
-    button {
-      background: #38bdf8;
-      color: #00111a;
-      border: 0;
-      padding: 10px 14px;
-      border-radius: 10px;
-      font-weight: bold;
       cursor: pointer;
+      outline: none;
+    }
+
+    .drop-zone:hover,
+    .drop-zone:focus-visible,
+    .drop-zone.is-dragging {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    .drop-title {
+      display: block;
+      margin-bottom: 5px;
+      font-size: .88rem;
+      font-weight: 700;
+    }
+
+    .drop-help {
+      display: block;
+      color: var(--muted);
+      font-size: .68rem;
+      line-height: 1.35;
+    }
+
+    #fileInput {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .load-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
       margin-top: 10px;
     }
-    .secondary {
-      background: #334155;
-      color: #e5e7eb;
-      margin-left: 8px;
+
+    .button {
+      min-height: 37px;
+      border: 1px solid var(--ink);
+      background: var(--panel);
+      font-size: .68rem;
+      font-weight: 700;
+      cursor: pointer;
     }
+
+    .button.primary {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .button:hover,
+    .button:focus-visible {
+      border-color: var(--accent);
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    .status-message {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 11px;
+      color: var(--muted);
+      font-size: .68rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--warning);
+    }
+
+    .status-message.is-ready .status-dot { background: var(--success); }
+    .status-message.is-error .status-dot { background: #b52d2d; }
+
+    .field-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 10px;
+    }
+
+    .field-tag {
+      padding: 3px 6px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-family: "Courier New", monospace;
+      font-size: .58rem;
+      text-transform: uppercase;
+    }
+
+    .summary-panel {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--soft-line);
+    }
+
+    .metric {
+      min-height: 122px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 13px;
+      background: var(--panel);
+    }
+
+    .metric:last-child { grid-column: 1 / -1; }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: .62rem;
+      font-weight: 700;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      display: block;
+      margin-top: 18px;
+      font-size: clamp(1.55rem, 2.4vw, 2.5rem);
+      line-height: .9;
+      letter-spacing: -.05em;
+    }
+
+    .metric-unit {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: .58rem;
+      text-transform: uppercase;
+    }
+
+    .summary-note {
+      margin: 0;
+      padding: 13px;
+      border-top: 1px solid var(--soft-line);
+      color: var(--muted);
+      font-size: .65rem;
+      line-height: 1.45;
+    }
+
+    .charts-panel {
+      grid-column: 2;
+      grid-row: 1 / 3;
+    }
+
+    .plots {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding: 10px;
+    }
+
+    .plot-card {
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .plot-head {
+      min-height: 31px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--soft-line);
+    }
+
+    .plot-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .plot-index {
+      color: var(--muted);
+      font-family: "Courier New", monospace;
+      font-size: .58rem;
+    }
+
+    .plot-title {
+      margin: 0;
+      font-size: .78rem;
+    }
+
+    .plot-unit {
+      color: var(--muted);
+      font-size: .57rem;
+      text-transform: uppercase;
+    }
+
+    .chart-wrap {
+      height: 270px;
+      margin-top: 10px;
+    }
+
     canvas {
-      width: 100% !important;
-      height: 320px !important;
+      display: block;
+      width: 100%;
+      height: 100%;
     }
+
+    .legend {
+      min-height: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: .58rem;
+      text-transform: uppercase;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .legend-swatch {
+      width: 18px;
+      height: 2px;
+      background: var(--swatch, var(--ink));
+    }
+
+    .data-register {
+      margin: 0 10px 10px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .data-register summary {
+      min-height: 45px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      cursor: pointer;
+      list-style: none;
+      font-size: .68rem;
+      font-weight: 700;
+    }
+
+    .data-register summary::-webkit-details-marker { display: none; }
+    .data-register[open] .register-action::after { content: "Close"; }
+    .data-register:not([open]) .register-action::after { content: "Open"; }
+
+    .register-action {
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .data-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 220px;
+      min-height: 360px;
+      border-top: 1px solid var(--line);
+    }
+
+    .table-wrap {
+      min-width: 0;
+      max-height: 440px;
+      overflow: auto;
+      border-right: 1px solid var(--line);
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 0.95rem;
+      font-family: "Courier New", monospace;
+      font-size: .67rem;
+      white-space: nowrap;
     }
+
     th, td {
-      border-bottom: 1px solid #334155;
-      padding: 8px;
+      padding: 8px 10px;
+      border-right: 1px solid var(--soft-line);
+      border-bottom: 1px solid var(--soft-line);
       text-align: left;
     }
-    th { color: #94a3b8; }
-    @media (max-width: 800px) {
-      .row { grid-template-columns: 1fr; }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f5f5f2;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: .58rem;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .table-empty {
+      padding: 38px 15px;
+      color: var(--muted);
+      font-family: Arial, Helvetica, sans-serif;
+      text-align: center;
+    }
+
+    .data-aside {
+      padding: 14px;
+      background: #f7f7f4;
+    }
+
+    .data-aside strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: .72rem;
+    }
+
+    .data-aside p {
+      margin: 0;
+      color: var(--muted);
+      font-size: .63rem;
+      line-height: 1.45;
+    }
+
+    .site-footer {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr 1fr;
+      border-top: 1px solid var(--ink);
+      background: var(--panel);
+    }
+
+    .footer-block {
+      min-width: 0;
+      padding: 18px 20px;
+      border-right: 1px solid var(--soft-line);
+    }
+
+    .footer-block:last-child { border-right: 0; }
+
+    .footer-block h2,
+    .footer-block h3 {
+      margin: 0 0 8px;
+      font-size: .7rem;
+      letter-spacing: .03em;
+    }
+
+    .footer-block p {
+      margin: 0;
+      color: var(--muted);
+      font-size: .63rem;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 1040px) {
+      .dashboard {
+        grid-template-columns: 300px minmax(0, 1fr);
+      }
+
+      .plots { grid-template-columns: 1fr; }
+      .chart-wrap { height: 245px; }
+      .site-footer { grid-template-columns: 1fr 1fr; }
+      .footer-block:nth-child(2) { border-right: 0; }
+      .footer-block:nth-child(-n+2) { border-bottom: 1px solid var(--soft-line); }
+    }
+
+    @media (max-width: 760px) {
+      .site-header {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .dashboard {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
+      }
+
+      .load-panel,
+      .summary-panel,
+      .charts-panel {
+        grid-column: 1;
+        grid-row: auto;
+      }
+
+      .plots { grid-template-columns: 1fr; }
+      .data-grid { grid-template-columns: 1fr; }
+      .table-wrap { border-right: 0; border-bottom: 1px solid var(--line); }
+      .site-footer { grid-template-columns: 1fr; }
+      .footer-block { border-right: 0; border-bottom: 1px solid var(--soft-line); }
+      .footer-block:last-child { border-bottom: 0; }
+    }
+
+    @media (max-width: 420px) {
+      .metrics { grid-template-columns: 1fr; }
+      .metric:last-child { grid-column: auto; }
+      .panel-header { align-items: flex-start; flex-direction: column; gap: 6px; }
+      .panel-note { text-align: left; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Sleep Sensor Visualizer</h1>
-    <p>Upload a CSV file from your sleep sensor and view the data in your browser.</p>
-
-    <div class="card upload">
-      <div><strong>Choose a CSV file</strong></div>
-      <p>Expected columns: <code>timestamp</code>, <code>spo2</code>, <code>heart_rate</code>, <code>mic_level</code>, <code>event</code></p>
-      <input id="fileInput" type="file" accept=".csv" />
-      <div>
-        <button id="demoBtn">Load demo data</button>
-        <button id="clearBtn" class="secondary">Clear</button>
+  <div class="app">
+    <header class="site-header">
+      <div class="brand">
+        <strong>VitalLabs</strong>
+        <span>Sleep signal viewer</span>
       </div>
-    </div>
-
-    <div class="card row">
-      <div class="metric">
-        <div class="label">Average SpO2</div>
-        <div class="value" id="avgSpo2">—</div>
+      <div class="header-dataset">
+        <span>Dataset</span>
+        <span id="headerFileName">serial_log_20260723_201614.csv</span>
       </div>
-      <div class="metric">
-        <div class="label">Average heart rate</div>
-        <div class="value" id="avgHr">—</div>
-      </div>
-      <div class="metric">
-        <div class="label">Detected events</div>
-        <div class="value" id="eventCount">—</div>
-      </div>
-    </div>
+    </header>
 
-    <div class="card">
-      <h2>SpO2 and Heart Rate</h2>
-      <canvas id="mainChart"></canvas>
-    </div>
+    <main class="dashboard">
+      <section class="panel load-panel" id="load-panel" aria-labelledby="loadTitle">
+        <header class="panel-header">
+          <div class="panel-heading">
+            <span class="panel-number">01</span>
+            <h1 class="panel-title" id="loadTitle">Load data</h1>
+          </div>
+          <p class="panel-note">CSV stays in this browser.</p>
+        </header>
 
-    <div class="card">
-      <h2>Microphone level</h2>
-      <canvas id="micChart"></canvas>
-    </div>
+        <div class="load-content">
+          <label class="drop-zone" id="dropZone" for="fileInput" tabindex="0">
+            <span>
+              <span class="drop-title">Choose or drop a CSV file</span>
+              <span class="drop-help">Supports SpO2 or IR, BPM, microphone, GSR/EDA, timestamps, and notes.</span>
+            </span>
+            <input id="fileInput" type="file" accept=".csv,text/csv">
+          </label>
 
-    <div class="card">
-      <h2>Raw Data Preview</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>timestamp</th>
-            <th>spo2</th>
-            <th>heart_rate</th>
-            <th>mic_level</th>
-            <th>event</th>
-          </tr>
-        </thead>
-        <tbody id="dataBody"></tbody>
-      </table>
-    </div>
+          <div class="load-actions">
+            <button class="button primary" type="button" id="demoButton">Load demo</button>
+            <button class="button" type="button" id="clearButton">Clear</button>
+          </div>
+
+          <div class="status-message is-ready" id="statusMessage" role="status" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="statusText">Loading sample CSV</span>
+          </div>
+          <div class="field-tags" id="fieldTags" aria-label="Detected columns"></div>
+        </div>
+      </section>
+
+      <section class="panel summary-panel" id="summary-panel" aria-labelledby="summaryTitle">
+        <header class="panel-header">
+          <div class="panel-heading">
+            <span class="panel-number">02</span>
+            <h2 class="panel-title" id="summaryTitle">Summary</h2>
+          </div>
+        </header>
+
+        <div class="metrics">
+          <article class="metric">
+            <span class="metric-label">Rows</span>
+            <div><strong class="metric-value" id="rowCount">?</strong><div class="metric-unit">samples</div></div>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Duration</span>
+            <div><strong class="metric-value" id="durationValue">?</strong><div class="metric-unit">recorded</div></div>
+          </article>
+          <article class="metric">
+            <span class="metric-label" id="opticalMetricLabel">Avg SpO2</span>
+            <div><strong class="metric-value" id="opticalValue">?</strong><div class="metric-unit" id="opticalUnit">percent</div></div>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Avg heart rate</span>
+            <div><strong class="metric-value" id="heartValue">?</strong><div class="metric-unit">BPM</div></div>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Peak microphone</span>
+            <div><strong class="metric-value" id="micValue">?</strong><div class="metric-unit">ADC / level</div></div>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Avg GSR</span>
+            <div><strong class="metric-value" id="gsrValue">?</strong><div class="metric-unit">ADC / EDA</div></div>
+          </article>
+          <article class="metric">
+            <span class="metric-label">Annotations</span>
+            <div><strong class="metric-value" id="eventValue">?</strong><div class="metric-unit">noted rows</div></div>
+          </article>
+        </div>
+        <p class="summary-note">Descriptive values only. This viewer does not diagnose sleep apnea or replace clinical polysomnography.</p>
+      </section>
+
+      <section class="panel charts-panel" id="charts-panel" aria-labelledby="chartsTitle">
+        <header class="panel-header">
+          <div class="panel-heading">
+            <span class="panel-number">03</span>
+            <h2 class="panel-title" id="chartsTitle">Charts</h2>
+          </div>
+          <p class="panel-note">Each signal uses its own vertical scale.</p>
+        </header>
+
+        <div class="plots">
+          <article class="plot-card">
+            <header class="plot-head">
+              <div class="plot-heading"><span class="plot-index">03.1</span><h3 class="plot-title" id="opticalTitle">Optical signal</h3></div>
+              <span class="plot-unit" id="opticalPlotUnit">%</span>
+            </header>
+            <div class="chart-wrap"><canvas id="opticalChart" aria-label="Optical signal chart"></canvas></div>
+            <div class="legend" id="opticalLegend"></div>
+          </article>
+
+          <article class="plot-card">
+            <header class="plot-head">
+              <div class="plot-heading"><span class="plot-index">03.2</span><h3 class="plot-title">Heart rate</h3></div>
+              <span class="plot-unit">BPM</span>
+            </header>
+            <div class="chart-wrap"><canvas id="heartChart" aria-label="Heart-rate chart"></canvas></div>
+            <div class="legend" id="heartLegend"></div>
+          </article>
+
+          <article class="plot-card">
+            <header class="plot-head">
+              <div class="plot-heading"><span class="plot-index">03.3</span><h3 class="plot-title">Microphone</h3></div>
+              <span class="plot-unit">ADC / level</span>
+            </header>
+            <div class="chart-wrap"><canvas id="micChart" aria-label="Microphone chart"></canvas></div>
+            <div class="legend" id="micLegend"></div>
+          </article>
+
+          <article class="plot-card">
+            <header class="plot-head">
+              <div class="plot-heading"><span class="plot-index">03.4</span><h3 class="plot-title">Galvanic skin response</h3></div>
+              <span class="plot-unit">ADC / EDA</span>
+            </header>
+            <div class="chart-wrap"><canvas id="gsrChart" aria-label="Galvanic skin response chart"></canvas></div>
+            <div class="legend" id="gsrLegend"></div>
+          </article>
+        </div>
+
+        <details class="data-register">
+          <summary>
+            <span>Inspect the first 100 normalized rows</span>
+            <span class="register-action" aria-hidden="true"></span>
+          </summary>
+          <div class="data-grid">
+            <div class="table-wrap">
+              <table aria-label="Normalized sensor data preview">
+                <thead id="tableHead"></thead>
+                <tbody id="tableBody"></tbody>
+              </table>
+            </div>
+            <aside class="data-aside">
+              <strong>Data preview</strong>
+              <p>The table shows normalized values. Charts and summaries use the complete file, and the original CSV remains unchanged.</p>
+            </aside>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <footer class="site-footer" aria-label="Project information">
+      <section class="footer-block">
+        <h2>VitalLabs viewer</h2>
+        <p>A static, local-first interface for reviewing multisensor sleep-monitoring recordings.</p>
+      </section>
+      <section class="footer-block">
+        <h3>Signals</h3>
+        <p>Optical or SpO2, BPM, microphone, GSR/EDA, timestamps, notes, and event labels.</p>
+      </section>
+      <section class="footer-block">
+        <h3>Privacy</h3>
+        <p>Files are parsed inside the browser. No account, server, or data upload is used.</p>
+      </section>
+      <section class="footer-block">
+        <h3>Use</h3>
+        <p>For research visualization only. Sensor output requires validation before medical interpretation.</p>
+      </section>
+    </footer>
   </div>
 
   <script>
-    const fileInput = document.getElementById("fileInput");
-    const demoBtn = document.getElementById("demoBtn");
-    const clearBtn = document.getElementById("clearBtn");
-    const dataBody = document.getElementById("dataBody");
+    (() => {
+      "use strict";
 
-    const avgSpo2 = document.getElementById("avgSpo2");
-    const avgHr = document.getElementById("avgHr");
-    const eventCount = document.getElementById("eventCount");
+      const COLORS = {
+        ink: "#11110f",
+        line: "#d8d8d1",
+        muted: "#676760",
+        orange: "#ff8a1e",
+        blue: "#3157ff",
+        pink: "#ef3e73",
+        green: "#168858",
+        cyan: "#00bce7"
+      };
 
-    let mainChart = null;
-    let micChart = null;
+      const DEMO_CSV_PATH = "CSV SAMPLES/serial_log_20260723_201614.csv";
+      const DEMO_CSV_FILE = "serial_log_20260723_201614.csv";
 
-    function mean(values) {
-      const nums = values.filter(v => Number.isFinite(v));
-      if (!nums.length) return null;
-      return nums.reduce((a, b) => a + b, 0) / nums.length;
-    }
+      const ALIASES = {
+        timestamp: ["timestamp", "time", "datetime", "date_time"],
+        elapsed: ["elapsed_seconds", "elapsed", "seconds", "time_seconds"],
+        timeMs: ["time_ms", "elapsed_ms", "milliseconds"],
+        spo2: ["spo2", "sp_o2", "oxygen_saturation", "oxygen"],
+        ir: ["ir", "raw_ir", "infrared", "ir_value"],
+        bpm: ["bpm", "heart_rate", "heartrate", "pulse", "pulse_rate"],
+        avgBpm: ["avg_bpm", "average_bpm", "average_heart_rate", "mean_bpm"],
+        mic: ["mic", "mic_level", "microphone", "microphone_level", "sound"],
+        gsr: ["gsr", "gsr_level", "eda", "electrodermal_activity", "skin_resistance"],
+        event: ["event", "note", "annotation", "label"]
+      };
 
-    function normalizeRows(rows) {
-      return rows
-        .map(r => ({
-          timestamp: r.timestamp || r.time || "",
-          spo2: Number(r.spo2),
-          heart_rate: Number(r.heart_rate),
-          mic_level: Number(r.mic_level),
-          event: (r.event || "").toString().trim()
-        }))
-        .filter(r => r.timestamp);
-    }
+      const ui = {
+        fileInput: document.getElementById("fileInput"),
+        dropZone: document.getElementById("dropZone"),
+        demoButton: document.getElementById("demoButton"),
+        clearButton: document.getElementById("clearButton"),
+        headerFileName: document.getElementById("headerFileName"),
+        statusMessage: document.getElementById("statusMessage"),
+        statusText: document.getElementById("statusText"),
+        fieldTags: document.getElementById("fieldTags"),
+        rowCount: document.getElementById("rowCount"),
+        durationValue: document.getElementById("durationValue"),
+        opticalMetricLabel: document.getElementById("opticalMetricLabel"),
+        opticalValue: document.getElementById("opticalValue"),
+        opticalUnit: document.getElementById("opticalUnit"),
+        heartValue: document.getElementById("heartValue"),
+        micValue: document.getElementById("micValue"),
+        gsrValue: document.getElementById("gsrValue"),
+        eventValue: document.getElementById("eventValue"),
+        opticalTitle: document.getElementById("opticalTitle"),
+        opticalPlotUnit: document.getElementById("opticalPlotUnit"),
+        opticalChart: document.getElementById("opticalChart"),
+        heartChart: document.getElementById("heartChart"),
+        micChart: document.getElementById("micChart"),
+        gsrChart: document.getElementById("gsrChart"),
+        opticalLegend: document.getElementById("opticalLegend"),
+        heartLegend: document.getElementById("heartLegend"),
+        micLegend: document.getElementById("micLegend"),
+        gsrLegend: document.getElementById("gsrLegend"),
+        tableHead: document.getElementById("tableHead"),
+        tableBody: document.getElementById("tableBody")
+      };
 
-    function renderTable(rows) {
-      dataBody.innerHTML = "";
-      rows.slice(0, 25).forEach(r => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td>${r.timestamp}</td>
-          <td>${Number.isFinite(r.spo2) ? r.spo2 : ""}</td>
-          <td>${Number.isFinite(r.heart_rate) ? r.heart_rate : ""}</td>
-          <td>${Number.isFinite(r.mic_level) ? r.mic_level : ""}</td>
-          <td>${r.event}</td>
-        `;
-        dataBody.appendChild(tr);
-      });
-    }
+      let currentRows = [];
+      let currentSchema = new Set();
+      let resizeTimer = null;
 
-    function updateSummary(rows) {
-      avgSpo2.textContent = mean(rows.map(r => r.spo2))?.toFixed(1) + "%" || "—";
-      avgHr.textContent = mean(rows.map(r => r.heart_rate))?.toFixed(1) + " bpm" || "—";
-      eventCount.textContent = rows.filter(r => r.event).length;
-    }
-
-    function destroyCharts() {
-      if (mainChart) mainChart.destroy();
-      if (micChart) micChart.destroy();
-    }
-
-    function renderCharts(rows) {
-      destroyCharts();
-
-      const labels = rows.map(r => r.timestamp);
-      const spo2Data = rows.map(r => Number.isFinite(r.spo2) ? r.spo2 : null);
-      const hrData = rows.map(r => Number.isFinite(r.heart_rate) ? r.heart_rate : null);
-      const micData = rows.map(r => Number.isFinite(r.mic_level) ? r.mic_level : null);
-
-      mainChart = new Chart(document.getElementById("mainChart"), {
-        type: "line",
-        data: {
-          labels,
-          datasets: [
-            {
-              label: "SpO2 (%)",
-              data: spo2Data,
-              borderWidth: 2,
-              tension: 0.3
-            },
-            {
-              label: "Heart Rate (bpm)",
-              data: hrData,
-              borderWidth: 2,
-              tension: 0.3
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: "#e5e7eb" } }
-          },
-          scales: {
-            x: { ticks: { color: "#94a3b8", maxTicksLimit: 8 } },
-            y: { ticks: { color: "#94a3b8" } }
-          }
-        }
-      });
-
-      micChart = new Chart(document.getElementById("micChart"), {
-        type: "line",
-        data: {
-          labels,
-          datasets: [
-            {
-              label: "Mic level",
-              data: micData,
-              borderWidth: 2,
-              tension: 0.3
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { color: "#e5e7eb" } }
-          },
-          scales: {
-            x: { ticks: { color: "#94a3b8", maxTicksLimit: 8 } },
-            y: { ticks: { color: "#94a3b8" } }
-          }
-        }
-      });
-    }
-
-    function loadData(rows) {
-      const clean = normalizeRows(rows);
-      if (!clean.length) {
-        alert("No usable rows found. Check your CSV columns.");
-        return;
+      function keyName(value) {
+        return String(value ?? "")
+          .trim()
+          .toLowerCase()
+          .replace(/^\uFEFF/, "")
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "");
       }
-      updateSummary(clean);
-      renderTable(clean);
-      renderCharts(clean);
-    }
 
-    function demoRows() {
-      const rows = [];
-      const start = new Date("2026-07-22T23:00:00");
-      for (let i = 0; i < 120; i++) {
-        const t = new Date(start.getTime() + i * 30000);
-        const spo2 = 98 - (i > 60 && i < 75 ? 3 : 0) - Math.abs(Math.sin(i / 15)) * 1.5;
-        const hr = 62 + Math.sin(i / 10) * 4 + (i > 60 && i < 75 ? 5 : 0);
-        const mic = Math.abs(Math.sin(i / 5)) * 0.4 + (i > 30 && i < 35 ? 0.9 : 0.1);
-        let event = "";
-        if (i === 32) event = "snore";
-        if (i === 66) event = "possible_apnea";
-        rows.push({
-          timestamp: t.toISOString(),
-          spo2: Number(spo2.toFixed(1)),
-          heart_rate: Number(hr.toFixed(1)),
-          mic_level: Number(mic.toFixed(2)),
-          event
+      function nullableNumber(value) {
+        if (value === null || value === undefined || String(value).trim() === "") return null;
+        const number = Number(String(value).trim());
+        return Number.isFinite(number) ? number : null;
+      }
+
+      function valueFor(rowMap, names) {
+        for (const name of names) {
+          if (Object.prototype.hasOwnProperty.call(rowMap, name)) {
+            const value = rowMap[name];
+            if (value !== null && value !== undefined && String(value).trim() !== "") return value;
+          }
+        }
+        return null;
+      }
+
+      function firstLogicalLine(text) {
+        let quoted = false;
+        let line = "";
+        for (let index = 0; index < text.length; index += 1) {
+          const char = text[index];
+          if (char === '"') {
+            if (quoted && text[index + 1] === '"') {
+              line += '""';
+              index += 1;
+              continue;
+            }
+            quoted = !quoted;
+          }
+          if (!quoted && (char === "\n" || char === "\r")) break;
+          line += char;
+        }
+        return line;
+      }
+
+      function countDelimiter(line, delimiter) {
+        let count = 0;
+        let quoted = false;
+        for (let index = 0; index < line.length; index += 1) {
+          if (line[index] === '"') {
+            if (quoted && line[index + 1] === '"') {
+              index += 1;
+            } else {
+              quoted = !quoted;
+            }
+          } else if (!quoted && line[index] === delimiter) {
+            count += 1;
+          }
+        }
+        return count;
+      }
+
+      function detectDelimiter(text) {
+        const line = firstLogicalLine(text);
+        const candidates = [",", "\t", ";"];
+        return candidates.reduce((best, candidate) => (
+          countDelimiter(line, candidate) > countDelimiter(line, best) ? candidate : best
+        ), ",");
+      }
+
+      function parseCSV(text) {
+        const source = String(text ?? "").replace(/^\uFEFF/, "");
+        const delimiter = detectDelimiter(source);
+        const matrix = [];
+        let row = [];
+        let cell = "";
+        let quoted = false;
+
+        for (let index = 0; index < source.length; index += 1) {
+          const char = source[index];
+
+          if (quoted) {
+            if (char === '"' && source[index + 1] === '"') {
+              cell += '"';
+              index += 1;
+            } else if (char === '"') {
+              quoted = false;
+            } else {
+              cell += char;
+            }
+          } else if (char === '"') {
+            quoted = true;
+          } else if (char === delimiter) {
+            row.push(cell);
+            cell = "";
+          } else if (char === "\n") {
+            row.push(cell);
+            if (row.some(value => value.trim() !== "")) matrix.push(row);
+            row = [];
+            cell = "";
+          } else if (char !== "\r") {
+            cell += char;
+          }
+        }
+
+        row.push(cell);
+        if (row.some(value => value.trim() !== "")) matrix.push(row);
+        if (matrix.length < 2) throw new Error("The CSV needs a header and at least one data row.");
+
+        const headers = matrix[0].map((header, index) => header.trim() || `column_${index + 1}`);
+        return matrix.slice(1).map(values => {
+          const record = {};
+          headers.forEach((header, index) => {
+            record[header] = values[index] ?? "";
+          });
+          return record;
         });
       }
-      return rows;
-    }
 
-    fileInput.addEventListener("change", (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+      function normalizeRows(records) {
+        const prepared = records.map((record, index) => {
+          const rowMap = {};
+          Object.entries(record).forEach(([key, value]) => {
+            rowMap[keyName(key)] = value;
+          });
 
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        dynamicTyping: true,
-        complete: (results) => loadData(results.data),
-        error: () => alert("Could not read the CSV file.")
+          const timestamp = valueFor(rowMap, ALIASES.timestamp);
+          const elapsed = nullableNumber(valueFor(rowMap, ALIASES.elapsed));
+          const timeMs = nullableNumber(valueFor(rowMap, ALIASES.timeMs));
+          const parsedTime = timestamp ? Date.parse(timestamp) : NaN;
+
+          return {
+            index,
+            timestamp: timestamp ? String(timestamp).trim() : "",
+            elapsed: elapsed ?? (timeMs === null ? null : timeMs / 1000),
+            parsedTime: Number.isFinite(parsedTime) ? parsedTime : null,
+            spo2: nullableNumber(valueFor(rowMap, ALIASES.spo2)),
+            ir: nullableNumber(valueFor(rowMap, ALIASES.ir)),
+            bpm: nullableNumber(valueFor(rowMap, ALIASES.bpm)),
+            avgBpm: nullableNumber(valueFor(rowMap, ALIASES.avgBpm)),
+            mic: nullableNumber(valueFor(rowMap, ALIASES.mic)),
+            gsr: nullableNumber(valueFor(rowMap, ALIASES.gsr)),
+            event: String(valueFor(rowMap, ALIASES.event) ?? "").trim()
+          };
+        });
+
+        const firstTimestamp = prepared.find(row => row.parsedTime !== null)?.parsedTime ?? null;
+        return prepared
+          .map((row, index) => ({
+            ...row,
+            x: row.elapsed !== null
+              ? row.elapsed
+              : row.parsedTime !== null && firstTimestamp !== null
+                ? (row.parsedTime - firstTimestamp) / 1000
+                : index
+          }))
+          .filter(row => (
+            row.timestamp ||
+            [row.spo2, row.ir, row.bpm, row.avgBpm, row.mic, row.gsr].some(Number.isFinite) ||
+            row.event
+          ));
+      }
+
+      function availableSchema(rows) {
+        const schema = new Set();
+        const fields = [
+          ["time", row => Number.isFinite(row.x)],
+          ["spo2", row => Number.isFinite(row.spo2)],
+          ["ir", row => Number.isFinite(row.ir)],
+          ["bpm", row => Number.isFinite(row.bpm)],
+          ["avg_bpm", row => Number.isFinite(row.avgBpm)],
+          ["mic", row => Number.isFinite(row.mic)],
+          ["gsr", row => Number.isFinite(row.gsr)],
+          ["note", row => Boolean(row.event)]
+        ];
+        fields.forEach(([name, test]) => {
+          if (rows.some(test)) schema.add(name);
+        });
+        return schema;
+      }
+
+      function values(rows, field) {
+        return rows.map(row => row[field]).filter(Number.isFinite);
+      }
+
+      function mean(list) {
+        return list.length ? list.reduce((sum, value) => sum + value, 0) / list.length : null;
+      }
+
+      function maximum(list) {
+        return list.length ? Math.max(...list) : null;
+      }
+
+      function formatNumber(value, maximumFractionDigits = 1) {
+        if (!Number.isFinite(value)) return "—";
+        return new Intl.NumberFormat(undefined, {
+          maximumFractionDigits,
+          notation: Math.abs(value) >= 100000 ? "compact" : "standard"
+        }).format(value);
+      }
+
+      function formatDuration(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 0) return "—";
+        if (seconds < 60) return `${Math.round(seconds)}s`;
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const remainingSeconds = Math.round(seconds % 60);
+        if (hours) return `${hours}h ${minutes}m`;
+        return `${minutes}m ${remainingSeconds}s`;
+      }
+
+      function setStatus(message, type = "ready") {
+        ui.statusText.textContent = message;
+        ui.statusMessage.classList.remove("is-ready", "is-error");
+        if (type === "ready") ui.statusMessage.classList.add("is-ready");
+        if (type === "error") ui.statusMessage.classList.add("is-error");
+      }
+
+      function escapeText(value) {
+        return String(value ?? "");
+      }
+
+      function setLegend(element, entries, emptyMessage) {
+        element.replaceChildren();
+        if (!entries.length) {
+          const item = document.createElement("span");
+          item.textContent = emptyMessage;
+          element.appendChild(item);
+          return;
+        }
+        entries.forEach(entry => {
+          const item = document.createElement("span");
+          item.className = "legend-item";
+          const swatch = document.createElement("span");
+          swatch.className = "legend-swatch";
+          swatch.style.setProperty("--swatch", entry.color);
+          const label = document.createElement("span");
+          label.textContent = entry.label;
+          item.append(swatch, label);
+          element.appendChild(item);
+        });
+      }
+
+      function compactPoints(points, target) {
+        if (points.length <= target) return points;
+        const stride = Math.ceil(points.length / target);
+        const compacted = [];
+        for (let index = 0; index < points.length; index += stride) {
+          const bucket = points.slice(index, index + stride);
+          const min = bucket.reduce((a, b) => (a.y < b.y ? a : b));
+          const max = bucket.reduce((a, b) => (a.y > b.y ? a : b));
+          if (min.x <= max.x) compacted.push(min, max);
+          else compacted.push(max, min);
+        }
+        return compacted;
+      }
+
+      function chartLabel(value) {
+        if (!Number.isFinite(value)) return "—";
+        if (Math.abs(value) >= 10000) return formatNumber(value, 0);
+        if (Math.abs(value) >= 100) return formatNumber(value, 0);
+        if (Math.abs(value) >= 10) return formatNumber(value, 1);
+        return formatNumber(value, 2);
+      }
+
+      function drawChart(canvas, series, emptyMessage) {
+        const rect = canvas.getBoundingClientRect();
+        const width = Math.max(280, Math.round(rect.width));
+        const height = Math.max(190, Math.round(rect.height));
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = width * ratio;
+        canvas.height = height * ratio;
+
+        const context = canvas.getContext("2d");
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        context.clearRect(0, 0, width, height);
+
+        const validSeries = series
+          .map(item => ({
+            ...item,
+            points: currentRows
+              .filter(row => Number.isFinite(row.x) && Number.isFinite(row[item.field]))
+              .map(row => ({ x: row.x, y: row[item.field] }))
+          }))
+          .filter(item => item.points.length);
+
+        if (!validSeries.length) {
+          context.fillStyle = COLORS.muted;
+          context.font = "700 12px Arial";
+          context.textAlign = "center";
+          context.textBaseline = "middle";
+          context.fillText(emptyMessage, width / 2, height / 2);
+          return;
+        }
+
+        const allPoints = validSeries.flatMap(item => item.points);
+        let xMin = Math.min(...allPoints.map(point => point.x));
+        let xMax = Math.max(...allPoints.map(point => point.x));
+        let yMin = Math.min(...allPoints.map(point => point.y));
+        let yMax = Math.max(...allPoints.map(point => point.y));
+
+        if (xMin === xMax) {
+          xMin -= 1;
+          xMax += 1;
+        }
+        if (yMin === yMax) {
+          const padding = Math.abs(yMin) * .05 || 1;
+          yMin -= padding;
+          yMax += padding;
+        } else {
+          const padding = (yMax - yMin) * .08;
+          yMin -= padding;
+          yMax += padding;
+        }
+
+        const margin = { top: 10, right: 10, bottom: 31, left: 56 };
+        const plotWidth = width - margin.left - margin.right;
+        const plotHeight = height - margin.top - margin.bottom;
+        const mapX = value => margin.left + ((value - xMin) / (xMax - xMin)) * plotWidth;
+        const mapY = value => margin.top + plotHeight - ((value - yMin) / (yMax - yMin)) * plotHeight;
+
+        context.lineWidth = 1;
+        context.font = "10px 'Courier New'";
+        context.textBaseline = "middle";
+
+        for (let tick = 0; tick <= 4; tick += 1) {
+          const fraction = tick / 4;
+          const y = margin.top + fraction * plotHeight;
+          const value = yMax - fraction * (yMax - yMin);
+          context.strokeStyle = COLORS.line;
+          context.beginPath();
+          context.moveTo(margin.left, y);
+          context.lineTo(width - margin.right, y);
+          context.stroke();
+          context.fillStyle = COLORS.muted;
+          context.textAlign = "right";
+          context.fillText(chartLabel(value), margin.left - 8, y);
+        }
+
+        for (let tick = 0; tick <= 5; tick += 1) {
+          const fraction = tick / 5;
+          const x = margin.left + fraction * plotWidth;
+          const value = xMin + fraction * (xMax - xMin);
+          context.strokeStyle = COLORS.line;
+          context.beginPath();
+          context.moveTo(x, margin.top);
+          context.lineTo(x, margin.top + plotHeight);
+          context.stroke();
+          context.fillStyle = COLORS.muted;
+          context.textAlign = tick === 0 ? "left" : tick === 5 ? "right" : "center";
+          context.textBaseline = "top";
+          context.fillText(`${chartLabel(value)}s`, x, height - 20);
+          context.textBaseline = "middle";
+        }
+
+        context.strokeStyle = COLORS.ink;
+        context.strokeRect(margin.left, margin.top, plotWidth, plotHeight);
+
+        context.save();
+        context.beginPath();
+        context.rect(margin.left, margin.top, plotWidth, plotHeight);
+        context.clip();
+
+        validSeries.forEach(item => {
+          const points = compactPoints(item.points, Math.max(260, Math.floor(plotWidth * 1.5)));
+          context.beginPath();
+          points.forEach((point, index) => {
+            const x = mapX(point.x);
+            const y = mapY(point.y);
+            if (index === 0) context.moveTo(x, y);
+            else context.lineTo(x, y);
+          });
+          context.strokeStyle = item.color;
+          context.lineWidth = item.width || 1.8;
+          context.lineJoin = "round";
+          context.lineCap = "round";
+          context.stroke();
+        });
+
+        context.restore();
+      }
+
+      function renderMetrics() {
+        const xValues = values(currentRows, "x");
+        const duration = xValues.length ? Math.max(...xValues) - Math.min(...xValues) : null;
+        const spo2Values = values(currentRows, "spo2");
+        const irValues = values(currentRows, "ir");
+        const bpmValues = values(currentRows, "bpm");
+        const averageBpmValues = values(currentRows, "avgBpm");
+        const micValues = values(currentRows, "mic");
+        const gsrValues = values(currentRows, "gsr");
+
+        ui.rowCount.textContent = currentRows.length ? formatNumber(currentRows.length, 0) : "—";
+        ui.durationValue.textContent = formatDuration(duration);
+
+        if (spo2Values.length) {
+          ui.opticalMetricLabel.textContent = "Avg SpO₂";
+          ui.opticalValue.textContent = formatNumber(mean(spo2Values), 1);
+          ui.opticalUnit.textContent = "percent";
+        } else {
+          ui.opticalMetricLabel.textContent = "Avg raw IR";
+          ui.opticalValue.textContent = formatNumber(mean(irValues), 0);
+          ui.opticalUnit.textContent = "optical counts";
+        }
+
+        ui.heartValue.textContent = formatNumber(mean(bpmValues.length ? bpmValues : averageBpmValues), 1);
+        ui.micValue.textContent = formatNumber(maximum(micValues), 1);
+        ui.gsrValue.textContent = formatNumber(mean(gsrValues), 1);
+        ui.eventValue.textContent = formatNumber(currentRows.filter(row => row.event).length, 0);
+      }
+
+      function renderTags() {
+        ui.fieldTags.replaceChildren();
+        if (!currentSchema.size) {
+          const tag = document.createElement("span");
+          tag.className = "field-tag";
+          tag.textContent = "No dataset";
+          ui.fieldTags.appendChild(tag);
+          return;
+        }
+        [...currentSchema].forEach(field => {
+          const tag = document.createElement("span");
+          tag.className = "field-tag";
+          tag.textContent = field;
+          ui.fieldTags.appendChild(tag);
+        });
+      }
+
+      function renderCharts() {
+        const hasSpO2 = currentSchema.has("spo2");
+        const opticalSeries = hasSpO2
+          ? [{ field: "spo2", label: "SpO₂", color: COLORS.orange, width: 2 }]
+          : currentSchema.has("ir")
+            ? [{ field: "ir", label: "Raw IR", color: COLORS.orange, width: 2 }]
+            : [];
+        const heartSeries = [
+          currentSchema.has("bpm") ? { field: "bpm", label: "Instantaneous BPM", color: COLORS.blue, width: 1.5 } : null,
+          currentSchema.has("avg_bpm") ? { field: "avgBpm", label: "Average BPM", color: COLORS.green, width: 2.4 } : null
+        ].filter(Boolean);
+        const micSeries = currentSchema.has("mic")
+          ? [{ field: "mic", label: "Microphone", color: COLORS.pink, width: 1.5 }]
+          : [];
+        const gsrSeries = currentSchema.has("gsr")
+          ? [{ field: "gsr", label: "GSR / EDA", color: COLORS.green, width: 1.5 }]
+          : [];
+
+        ui.opticalTitle.textContent = hasSpO2 ? "Oxygen saturation" : "Raw optical signal";
+        ui.opticalPlotUnit.textContent = hasSpO2 ? "%" : "IR counts";
+        drawChart(ui.opticalChart, opticalSeries, "No SpO₂ or IR column detected");
+        drawChart(ui.heartChart, heartSeries, "No BPM column detected");
+        drawChart(ui.micChart, micSeries, "No microphone column detected");
+        drawChart(ui.gsrChart, gsrSeries, "No GSR / EDA column detected");
+
+        setLegend(ui.opticalLegend, opticalSeries, "Optical data unavailable");
+        setLegend(ui.heartLegend, heartSeries, "Heart-rate data unavailable");
+        setLegend(ui.micLegend, micSeries, "Microphone data unavailable");
+        setLegend(ui.gsrLegend, gsrSeries, "GSR data unavailable in this dataset");
+      }
+
+      function renderTable() {
+        ui.tableHead.replaceChildren();
+        ui.tableBody.replaceChildren();
+
+        if (!currentRows.length) {
+          const row = document.createElement("tr");
+          const cell = document.createElement("td");
+          cell.className = "table-empty";
+          cell.colSpan = 8;
+          cell.textContent = "Load a CSV file to inspect its normalized rows.";
+          row.appendChild(cell);
+          ui.tableBody.appendChild(row);
+          return;
+        }
+
+        const columns = [
+          { key: "x", label: "Elapsed (s)", show: true, format: value => formatNumber(value, 2) },
+          { key: "timestamp", label: "Timestamp", show: currentRows.some(row => row.timestamp), format: escapeText },
+          { key: "spo2", label: "SpO₂", show: currentSchema.has("spo2"), format: value => formatNumber(value, 2) },
+          { key: "ir", label: "IR", show: currentSchema.has("ir"), format: value => formatNumber(value, 2) },
+          { key: "bpm", label: "BPM", show: currentSchema.has("bpm"), format: value => formatNumber(value, 2) },
+          { key: "avgBpm", label: "Avg BPM", show: currentSchema.has("avg_bpm"), format: value => formatNumber(value, 2) },
+          { key: "mic", label: "Microphone", show: currentSchema.has("mic"), format: value => formatNumber(value, 2) },
+          { key: "gsr", label: "GSR", show: currentSchema.has("gsr"), format: value => formatNumber(value, 2) },
+          { key: "event", label: "Note / Event", show: currentSchema.has("note"), format: escapeText }
+        ].filter(column => column.show);
+
+        const headerRow = document.createElement("tr");
+        columns.forEach(column => {
+          const header = document.createElement("th");
+          header.scope = "col";
+          header.textContent = column.label;
+          headerRow.appendChild(header);
+        });
+        ui.tableHead.appendChild(headerRow);
+
+        currentRows.slice(0, 100).forEach(sourceRow => {
+          const row = document.createElement("tr");
+          columns.forEach(column => {
+            const cell = document.createElement("td");
+            cell.textContent = column.format(sourceRow[column.key]);
+            row.appendChild(cell);
+          });
+          ui.tableBody.appendChild(row);
+        });
+      }
+
+      function renderAll() {
+        renderTags();
+        renderMetrics();
+        renderCharts();
+        renderTable();
+      }
+
+      function loadRecords(records, fileName, statusLabel) {
+        const normalized = normalizeRows(records);
+        if (!normalized.length) {
+          throw new Error("No recognizable sensor values were found in this file.");
+        }
+        currentRows = normalized;
+        currentSchema = availableSchema(currentRows);
+        ui.headerFileName.textContent = fileName;
+        setStatus(statusLabel || `${formatNumber(currentRows.length, 0)} rows loaded`, "ready");
+        renderAll();
+      }
+
+      function loadCSVText(text, fileName, statusLabel) {
+        const records = parseCSV(text);
+        loadRecords(
+          records,
+          fileName,
+          statusLabel || `${formatNumber(records.length, 0)} CSV rows loaded`
+        );
+      }
+
+      async function loadDemoCSV() {
+        setStatus("Loading sample CSV", "neutral");
+        try {
+          const response = await fetch(encodeURI(DEMO_CSV_PATH), { cache: "no-store" });
+          if (!response.ok) throw new Error(`Sample CSV returned ${response.status}`);
+          const text = await response.text();
+          loadCSVText(text, DEMO_CSV_FILE, "Sample GSR dataset loaded");
+        } catch (error) {
+          console.warn("The relative sample CSV could not be loaded.", error);
+          const localMessage = window.location.protocol === "file:"
+            ? "Browser blocked the sample file; embedded preview loaded"
+            : "Sample unavailable; embedded preview loaded";
+          loadRecords(demoRecords(), DEMO_CSV_FILE, localMessage);
+        }
+      }
+
+      function demoRecords() {
+        const records = [];
+        const start = new Date("2026-07-23T20:16:14");
+        for (let index = 0; index < 360; index += 1) {
+          const elapsed = index * .5;
+          const contact = elapsed > 12 && elapsed < 171;
+          const apneaWindow = elapsed > 82 && elapsed < 103;
+          const recovery = elapsed >= 103 && elapsed < 121;
+          const ir = contact
+            ? 119800 + 950 * Math.sin(index / 19) - (apneaWindow ? (elapsed - 82) * 145 : 0) + (recovery ? (121 - elapsed) * 180 : 0)
+            : 900 + 80 * Math.sin(index / 4);
+          const bpm = contact
+            ? 61 + 5 * Math.sin(index / 15) + (apneaWindow ? 18 * Math.sin((elapsed - 82) / 6) : 0)
+            : 0;
+          const avgBpm = contact ? 62 + 2.4 * Math.sin(index / 35) : 0;
+          const mic = 420 + 35 * Math.sin(index / 7) + (elapsed > 58 && elapsed < 78 ? 780 * Math.abs(Math.sin(index / 3.5)) : 0);
+          const gsr = 3940 + 18 * Math.sin(index / 16) + (apneaWindow ? 85 * Math.sin((elapsed - 82) / 21 * Math.PI) : 0);
+          let note = "";
+          if (Math.abs(elapsed - 58) < .1) note = "snoring begins";
+          if (Math.abs(elapsed - 82) < .1) note = "simulated apnea";
+          if (Math.abs(elapsed - 103) < .1) note = "recovery";
+
+          records.push({
+            timestamp: new Date(start.getTime() + elapsed * 1000).toISOString(),
+            elapsed_seconds: elapsed.toFixed(1),
+            ir: Math.round(ir),
+            bpm: bpm.toFixed(1),
+            avg_bpm: avgBpm.toFixed(1),
+            mic: Math.round(mic),
+            gsr: Math.round(gsr),
+            note
+          });
+        }
+        return records;
+      }
+
+      async function handleFile(file) {
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".csv")) {
+          setStatus("Please choose a .csv file", "error");
+          return;
+        }
+        try {
+          setStatus("Reading local file", "neutral");
+          const text = await file.text();
+          loadCSVText(text, file.name);
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message || "Unable to read this CSV file", "error");
+        } finally {
+          ui.fileInput.value = "";
+        }
+      }
+
+      ui.fileInput.addEventListener("change", event => {
+        handleFile(event.target.files?.[0]);
       });
-    });
 
-    demoBtn.addEventListener("click", () => loadData(demoRows()));
+      ui.dropZone.addEventListener("keydown", event => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          ui.fileInput.click();
+        }
+      });
 
-    clearBtn.addEventListener("click", () => {
-      fileInput.value = "";
-      dataBody.innerHTML = "";
-      avgSpo2.textContent = "—";
-      avgHr.textContent = "—";
-      eventCount.textContent = "—";
-      destroyCharts();
-    });
+      ["dragenter", "dragover"].forEach(eventName => {
+        ui.dropZone.addEventListener(eventName, event => {
+          event.preventDefault();
+          ui.dropZone.classList.add("is-dragging");
+        });
+      });
 
-    // show demo data when the page opens
-    loadData(demoRows());
+      ["dragleave", "drop"].forEach(eventName => {
+        ui.dropZone.addEventListener(eventName, event => {
+          event.preventDefault();
+          ui.dropZone.classList.remove("is-dragging");
+        });
+      });
+
+      ui.dropZone.addEventListener("drop", event => {
+        handleFile(event.dataTransfer?.files?.[0]);
+      });
+
+      ui.demoButton.addEventListener("click", () => {
+        loadDemoCSV();
+      });
+
+      ui.clearButton.addEventListener("click", () => {
+        currentRows = [];
+        currentSchema = new Set();
+        ui.headerFileName.textContent = "no file selected";
+        setStatus("Waiting for a CSV file", "neutral");
+        renderAll();
+      });
+
+      window.addEventListener("resize", () => {
+        window.clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(renderCharts, 120);
+      });
+
+      loadDemoCSV();
+    })();
   </script>
 </body>
 </html>
